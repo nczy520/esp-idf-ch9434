@@ -10,6 +10,7 @@
  *   - Random data test: sends random length (1-255) random bytes, runs 100 groups
  */
 #include <string.h>
+#include <stdio.h>
 #include "esp_log.h"
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
@@ -20,6 +21,16 @@
 #include "test_app.h"
 
 #define TAG "test"
+
+/* ---------- UART3 background task configuration ---------- */
+#define UART3_TX_INTERVAL_MS      3000   /* send every 3 seconds */
+#define UART3_RX_POLL_INTERVAL_MS 50     /* poll RX every 50ms */
+#define UART3_RX_BUF_SIZE         256    /* RX buffer size */
+
+static TaskHandle_t s_uart3_tx_task_handle = NULL;
+static TaskHandle_t s_uart3_rx_task_handle = NULL;
+static volatile uint32_t s_uart3_tx_count = 0;
+static volatile uint32_t s_uart3_rx_count = 0;
 
 static const ch9434_uart_config_t k_default_cfg = {
     .baud        = CH9434_BAUD_115200,
@@ -141,6 +152,79 @@ static bool test_cross_random(uint8_t tx_uart, uint8_t rx_uart, uint16_t len, ui
 }
 
 /* -------------------------------------------------------------------------- */
+/*                          UART3 background tasks                             */
+/* -------------------------------------------------------------------------- */
+
+static void uart3_tx_task(void *arg)
+{
+    (void)arg;
+    ESP_LOGI(TAG, "UART3 TX task started (interval=%d ms)", UART3_TX_INTERVAL_MS);
+
+    char tx_buf[128];
+
+    while (1) {
+        int len = snprintf(tx_buf, sizeof(tx_buf),
+                           "[UART3] Hello from CH9434! seq=%lu tick=%lu\r\n",
+                           (unsigned long)s_uart3_tx_count,
+                           (unsigned long)xTaskGetTickCount());
+
+        if (len > 0 && len < sizeof(tx_buf)) {
+            esp_err_t ret = ch9434_uart_write(CH9434_UART3, (const uint8_t *)tx_buf, (uint16_t)len);
+            if (ret == ESP_OK) {
+                s_uart3_tx_count++;
+                ESP_LOGI(TAG, "UART3 TX: sent %d bytes (seq=%lu)", len, (unsigned long)(s_uart3_tx_count - 1));
+            } else {
+                ESP_LOGE(TAG, "UART3 TX: write failed: %s", esp_err_to_name(ret));
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(UART3_TX_INTERVAL_MS));
+    }
+}
+
+static void uart3_rx_task(void *arg)
+{
+    (void)arg;
+    ESP_LOGI(TAG, "UART3 RX task started (poll interval=%d ms)", UART3_RX_POLL_INTERVAL_MS);
+
+    uint8_t rx_buf[UART3_RX_BUF_SIZE];
+
+    while (1) {
+        uint16_t available = 0;
+        esp_err_t ret = ch9434_uart_available(CH9434_UART3, &available);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "UART3 RX: available query failed: %s", esp_err_to_name(ret));
+            vTaskDelay(pdMS_TO_TICKS(UART3_RX_POLL_INTERVAL_MS));
+            continue;
+        }
+
+        if (available > 0) {
+            if (available > sizeof(rx_buf)) {
+                available = sizeof(rx_buf);
+            }
+
+            uint16_t read_len = 0;
+            ret = ch9434_uart_read(CH9434_UART3, rx_buf, available, &read_len);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "UART3 RX: read failed: %s", esp_err_to_name(ret));
+                vTaskDelay(pdMS_TO_TICKS(UART3_RX_POLL_INTERVAL_MS));
+                continue;
+            }
+
+            if (read_len > 0) {
+                s_uart3_rx_count += read_len;
+
+                ESP_LOGI(TAG, "UART3 RX: received %u bytes (total=%lu):",
+                         read_len, (unsigned long)s_uart3_rx_count);
+                ESP_LOG_BUFFER_HEXDUMP(TAG, rx_buf, read_len, ESP_LOG_INFO);
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(UART3_RX_POLL_INTERVAL_MS));
+    }
+}
+
+/* -------------------------------------------------------------------------- */
 /*                          Main test entry                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -151,6 +235,8 @@ void test_app_run(void)
     ESP_LOGI(TAG, "  - UART0: TX0 <-> RX0 (loopback)");
     ESP_LOGI(TAG, "  - UART1: TX1 -> UART2: RX2 (cross-link)");
     ESP_LOGI(TAG, "  - UART2: TX2 -> UART1: RX1 (cross-link reverse)");
+    ESP_LOGI(TAG, "  - UART3: background TX/RX (TX every %d ms, RX poll %d ms)",
+             UART3_TX_INTERVAL_MS, UART3_RX_POLL_INTERVAL_MS);
     ESP_LOGI(TAG, "  - Baud rate: 115200 8N1");
     ESP_LOGI(TAG, "  - SPI clock: 200kHz");
     ESP_LOGI(TAG, "  - Test groups: %u", (unsigned)TEST_GROUP_COUNT);
@@ -168,6 +254,13 @@ void test_app_run(void)
     }
 
     vTaskDelay(pdMS_TO_TICKS(50));
+
+    ESP_LOGI(TAG, "Starting UART3 background tasks ...");
+    xTaskCreate(uart3_rx_task, "uart3_rx", 2048, NULL, 5, &s_uart3_rx_task_handle);
+    xTaskCreate(uart3_tx_task, "uart3_tx", 2048, NULL, 4, &s_uart3_tx_task_handle);
+    ESP_LOGI(TAG, "  UART3 RX task started");
+    ESP_LOGI(TAG, "  UART3 TX task started (interval=%d ms)", UART3_TX_INTERVAL_MS);
+    ESP_LOGI(TAG, "---------------------------------------------");
 
     ESP_LOGI(TAG, "Starting tests ...");
     ESP_LOGI(TAG, "---------------------------------------------");

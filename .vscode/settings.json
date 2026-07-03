@@ -1,5 +1,6 @@
 {
-    "idf.currentSetup": "/Users/zy/.espressif/v6.0.2/esp-idf",
+    "idf.currentSetup": "D:\\esp\\v6.0.2\\esp-idf",
     "idf.port": "/dev/tty.usbmodem14A01",
-    "idf.flashType": "UART"
+    "idf.flashType": "UART",
+    "idf.portWin": "COM9"
 }
