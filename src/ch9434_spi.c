@@ -25,6 +25,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "sdkconfig.h"
 
 #include "ch9434_spi.h"
@@ -78,6 +79,7 @@ static spi_device_handle_t s_dev = NULL;
 static bool s_initialized = false;
 static QueueHandle_t s_spi_queue = NULL;
 static TaskHandle_t s_spi_task_handle = NULL;
+static SemaphoreHandle_t s_init_mutex = NULL;
 
 /* 前置声明 - 在 bus_init 之后定义。 */
 static void spi_service_task(void *arg);
@@ -88,7 +90,17 @@ static void spi_service_task(void *arg);
 
 esp_err_t ch9434_spi_bus_init(void)
 {
+    if (s_init_mutex == NULL) {
+        s_init_mutex = xSemaphoreCreateMutex();
+        if (s_init_mutex == NULL) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    xSemaphoreTake(s_init_mutex, portMAX_DELAY);
+
     if (s_initialized) {
+        xSemaphoreGive(s_init_mutex);
         return ESP_OK;
     }
 
@@ -112,6 +124,7 @@ esp_err_t ch9434_spi_bus_init(void)
     esp_err_t ret = spi_bus_initialize(SPI_HOST_CH9434, &bus_cfg, SPI_DMA_DISABLED);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "spi_bus_initialize 失败: %s", esp_err_to_name(ret));
+        xSemaphoreGive(s_init_mutex);
         return ret;
     }
 
@@ -119,6 +132,7 @@ esp_err_t ch9434_spi_bus_init(void)
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "spi_bus_add_device 失败: %s", esp_err_to_name(ret));
         spi_bus_free(SPI_HOST_CH9434);
+        xSemaphoreGive(s_init_mutex);
         return ret;
     }
 
@@ -128,6 +142,7 @@ esp_err_t ch9434_spi_bus_init(void)
         spi_bus_remove_device(s_dev);
         spi_bus_free(SPI_HOST_CH9434);
         s_dev = NULL;
+        xSemaphoreGive(s_init_mutex);
         return ESP_ERR_NO_MEM;
     }
 
@@ -139,10 +154,12 @@ esp_err_t ch9434_spi_bus_init(void)
         spi_bus_remove_device(s_dev);
         spi_bus_free(SPI_HOST_CH9434);
         s_dev = NULL;
+        xSemaphoreGive(s_init_mutex);
         return ESP_ERR_NO_MEM;
     }
 
     s_initialized = true;
+    xSemaphoreGive(s_init_mutex);
     ESP_LOGI(TAG, "CH9434 SPI 总线就绪 (MOSI=%d MISO=%d SCK=%d CS=%d @%d Hz, 队列=%d)",
              PIN_NUM_MOSI, PIN_NUM_MISO, PIN_NUM_SCK, PIN_NUM_CS,
              CH9434_SPI_CLOCK_HZ, SPI_QUEUE_SIZE);
@@ -151,7 +168,13 @@ esp_err_t ch9434_spi_bus_init(void)
 
 void ch9434_spi_bus_deinit(void)
 {
+    if (s_init_mutex == NULL) {
+        return;
+    }
+    xSemaphoreTake(s_init_mutex, portMAX_DELAY);
+
     if (!s_initialized) {
+        xSemaphoreGive(s_init_mutex);
         return;
     }
     if (s_spi_task_handle) {
@@ -166,6 +189,7 @@ void ch9434_spi_bus_deinit(void)
     spi_bus_free(SPI_HOST_CH9434);
     s_dev = NULL;
     s_initialized = false;
+    xSemaphoreGive(s_init_mutex);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -229,7 +253,7 @@ static void spi_service_task(void *arg)
         case SPI_REQ_READ_REG:
             req.result = ch9434_spi_xfer2(CH9434_REG_OP_READ, req.reg,
                                           0xFF, req.out_value,
-                                          CH9434A_DELAY_DATA_TO_CS_US);
+                                          CH9434A_DELAY_READ_DONE_US);
             break;
 
         case SPI_REQ_WRITE_BYTES:
@@ -249,7 +273,7 @@ static void spi_service_task(void *arg)
             for (uint16_t i = 0; i < req.len; i++) {
                 req.result = ch9434_spi_xfer2(CH9434_REG_OP_READ, req.reg,
                                               0xFF, &req.rdata[i],
-                                              CH9434A_DELAY_DATA_TO_CS_US);
+                                              CH9434A_DELAY_READ_DONE_US);
                 if (req.result != ESP_OK) {
                     break;
                 }

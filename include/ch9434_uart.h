@@ -61,7 +61,7 @@ typedef struct {
     ch9434_databits_t data_bits;
     ch9434_stopbits_t stop_bits;
     ch9434_parity_t   parity;
-    bool              use_fifo;       /* 使能 256 字节 FIFO */
+    bool              use_fifo;       /* 使能硬件 FIFO（RX 256 字节，TX 1536 字节） */
     bool              hw_flow_ctrl;   /* 使能自动 RTS/CTS（已接线时） */
 } ch9434_uart_config_t;
 

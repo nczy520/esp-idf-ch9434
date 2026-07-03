@@ -25,7 +25,7 @@ esp_err_t ch9434_modify_reg(uint8_t addr, uint8_t clear_mask, uint8_t set_mask)
     if (ret != ESP_OK) {
         return ret;
     }
-    uint8_t new_val = (uint8_t)((cur & ~clear_mask) | (set_mask & clear_mask));
+    uint8_t new_val = (uint8_t)((cur & ~clear_mask) | set_mask);
     if (new_val == cur) {
         return ESP_OK;
     }

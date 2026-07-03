@@ -1,6 +1,8 @@
-cmake_minimum_required(VERSION 3.16)
-
-set(EXTRA_COMPONENT_DIRS "")
-
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(sample_project_ch9434)
+idf_component_register(
+    SRCS
+        "src/ch9434_spi.c"
+        "src/ch9434_drv.c"
+        "src/ch9434_uart.c"
+    INCLUDE_DIRS "include"
+    REQUIRES driver esp_driver_spi esp_timer
+)

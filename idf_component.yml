@@ -8,7 +8,6 @@
 ##   dependencies:
 ##     ch9434:
 ##       git: https://github.com/nczy520/esp-idf-ch9434.git
-##       path: components/ch9434
 ##       version: main
 
 version: "1.0.1"
@@ -33,10 +32,20 @@ description: "WCH CH9434 SPI 转 4 路 UART 桥接芯片的 ESP-IDF 驱动。基
 files:
   include:
     - "include/**"
+    - "src/**"
+    - "CMakeLists.txt"
+    - "Kconfig"
+    - "README.md"
+    - "idf_component.yml"
+    - "LICENSE"
   exclude:
     - ".git"
     - ".github"
     - "test"
     - "docs"
-    - "*.md"
+    - "examples"
+    - ".vscode"
+    - ".gitignore"
     - "sdkconfig*"
+    - "build"
+    - "dependencies.lock"

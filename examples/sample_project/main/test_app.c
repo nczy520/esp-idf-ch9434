@@ -82,10 +82,16 @@ static bool test_loopback_random(uint8_t uart, uint16_t len, uint32_t group)
 
     vTaskDelay(pdMS_TO_TICKS(ROUND_TRIP_WAIT_MS));
 
-    ret = ch9434_uart_read_fifo(uart, rx_buf, len);
+    uint16_t rx_len = 0;
+    ret = ch9434_uart_read(uart, rx_buf, len, &rx_len);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "[%3u/%3u] UART%u loopback: READ FAILED: %s",
                  (unsigned)group, (unsigned)TEST_GROUP_COUNT, uart, esp_err_to_name(ret));
+        return false;
+    }
+    if (rx_len != len) {
+        ESP_LOGE(TAG, "[%3u/%3u] UART%u loopback: LENGTH MISMATCH (sent=%u, recv=%u)",
+                 (unsigned)group, (unsigned)TEST_GROUP_COUNT, uart, (unsigned)len, (unsigned)rx_len);
         return false;
     }
 
@@ -128,10 +134,17 @@ static bool test_cross_random(uint8_t tx_uart, uint8_t rx_uart, uint16_t len, ui
 
     vTaskDelay(pdMS_TO_TICKS(ROUND_TRIP_WAIT_MS));
 
-    ret = ch9434_uart_read_fifo(rx_uart, rx_buf, len);
+    uint16_t rx_len = 0;
+    ret = ch9434_uart_read(rx_uart, rx_buf, len, &rx_len);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "[%3u/%3u] UART%u->UART%u cross: READ FAILED: %s",
                  (unsigned)group, (unsigned)TEST_GROUP_COUNT, tx_uart, rx_uart, esp_err_to_name(ret));
+        return false;
+    }
+    if (rx_len != len) {
+        ESP_LOGE(TAG, "[%3u/%3u] UART%u->UART%u cross: LENGTH MISMATCH (sent=%u, recv=%u)",
+                 (unsigned)group, (unsigned)TEST_GROUP_COUNT, tx_uart, rx_uart,
+                 (unsigned)len, (unsigned)rx_len);
         return false;
     }
 

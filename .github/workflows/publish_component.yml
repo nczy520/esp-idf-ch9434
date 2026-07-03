@@ -12,17 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate component archive (exclude parent repo files)
-        run: |
-          mkdir -p /tmp/ch9434_archive
-          rsync -a --exclude='.git' --exclude='.github' \
-                 components/ch9434/ /tmp/ch9434_archive/
-          tar -czf ch9434.tar.gz -C /tmp ch9434_archive
-
       - name: Upload component to ESP Component Registry
         uses: espressif/upload-components-ci-action@v1
         with:
           name: ch9434
           version: ${{ github.ref_name }}
-          path: components/ch9434
+          path: .
           api_token: ${{ secrets.ESP_COMPONENT_REGISTRY_TOKEN }}
