@@ -25,7 +25,7 @@ targets:
 
 dependencies:
   idf:
-    version: ">=5.0"
+    version: ">=6.0"
 
 description: "WCH CH9434 SPI 转 4 路 UART 桥接芯片的 ESP-IDF 驱动。基于队列 + 专用 SPI 服务任务实现，支持多 FreeRTOS 任务并发安全访问。"
 
