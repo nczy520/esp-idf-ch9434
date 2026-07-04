@@ -15,6 +15,7 @@
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
 #include "ch9434_uart.h"
 #include "ch9434_drv.h"
 #include "ch9434_regs.h"
@@ -251,7 +252,7 @@ void test_app_run(void)
     ESP_LOGI(TAG, "  - UART3: background TX/RX (TX every %d ms, RX poll %d ms)",
              UART3_TX_INTERVAL_MS, UART3_RX_POLL_INTERVAL_MS);
     ESP_LOGI(TAG, "  - Baud rate: 115200 8N1");
-    ESP_LOGI(TAG, "  - SPI clock: 2MHz");
+    ESP_LOGI(TAG, "  - SPI clock: %dHz", CONFIG_CH9434_SPI_CLOCK_HZ);
     ESP_LOGI(TAG, "  - Test groups: %u", (unsigned)TEST_GROUP_COUNT);
     ESP_LOGI(TAG, "  - Random data length: 1-255 bytes per test");
     ESP_LOGI(TAG, "---------------------------------------------");

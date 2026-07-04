@@ -46,6 +46,11 @@
 #define CH9434A_DELAY_READ_ADDR_US     3   /* 读操作：地址 -> 读数据 */
 #define CH9434A_DELAY_READ_DONE_US     1   /* 读操作：读完成 -> CS 高 */
 
+/* FIFO_CTRL 写入后，芯片锁存所选 UART/方向计数器到 FIFO_CTRL_L/H
+ * 所需的等待时间。原多次 spi_submit 路径在调用之间天然存在 1+ ms 的
+ * RTOS 调度延时，合并请求消去了这一延时，因此此处显式补足。 */
+#define CH9434_FIFO_CTRL_SETTLE_US     5
+
 /* ---------- 基于队列的 SPI 串行化 ---------- */
 #define SPI_QUEUE_SIZE      CONFIG_CH9434_SPI_QUEUE_SIZE
 #define SPI_TASK_STACK      CONFIG_CH9434_SPI_TASK_STACK
@@ -297,6 +302,10 @@ static void spi_service_task(void *arg)
             if (req.result != ESP_OK) {
                 break;
             }
+            /* 等待芯片根据 FIFO_CTRL 选定的 UART/方向更新 FIFO_CTRL_L/H 计数器。
+             * 合并请求省去了原本多次 spi_submit 之间的 RTOS 调度延时，
+             * 但芯片需要约 5us 才能将所选 FIFO 计数器锁存到 L/H 寄存器。 */
+            ets_delay_us(CH9434_FIFO_CTRL_SETTLE_US);
             uint8_t lo = 0, hi = 0;
             req.result = ch9434_spi_xfer2(CH9434_REG_OP_READ, CH9434_FIFO_CTRL_L,
                                           0xFF, &lo,
@@ -309,6 +318,9 @@ static void spi_service_task(void *arg)
                                           CH9434A_DELAY_READ_DONE_US);
             if (req.result == ESP_OK && req.fifo_len) {
                 *req.fifo_len = (uint16_t)((hi << 8) | lo);
+                ESP_LOGD(TAG, "GET_FIFO_LEN uart=%u %s lo=0x%02X hi=0x%02X -> %u",
+                         (unsigned)req.uart, req.is_tx ? "TX" : "RX",
+                         lo, hi, (unsigned)*req.fifo_len);
             }
             break;
         }
@@ -321,6 +333,8 @@ static void spi_service_task(void *arg)
             if (req.result != ESP_OK) {
                 break;
             }
+            /* 同上：等待 FIFO_CTRL_L/H 更新（见 SPI_REQ_GET_FIFO_LEN）。 */
+            ets_delay_us(CH9434_FIFO_CTRL_SETTLE_US);
             uint8_t lo = 0, hi = 0;
             req.result = ch9434_spi_xfer2(CH9434_REG_OP_READ, CH9434_FIFO_CTRL_L,
                                           0xFF, &lo,
@@ -338,6 +352,8 @@ static void spi_service_task(void *arg)
             if (available > req.len) {
                 available = req.len;
             }
+            ESP_LOGD(TAG, "READ_FIFO uart=%u RX lo=0x%02X hi=0x%02X -> available=%u (cap=%u)",
+                     (unsigned)req.uart, lo, hi, (unsigned)available, (unsigned)req.len);
             if (req.out_len) {
                 *req.out_len = available;
             }
