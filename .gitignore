@@ -29,7 +29,7 @@ build/
 *.elf
 *.map
 flasher_args.json # Generated in build directory
-#sdkconfig.old
+sdkconfig.old
 #sdkconfig
 
 # ESP-IDF dependencies
@@ -76,3 +76,6 @@ Desktop.ini
 *.workspace # General workspace files, can be from various tools
 *.suo       # Visual Studio Solution User Options
 *.sln.docstates # Visual Studio
+
+# IDE / Editor user settings
+.vscode/
