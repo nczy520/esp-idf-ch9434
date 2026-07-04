@@ -41,7 +41,9 @@ esp_err_t ch9434_uart_read_dll(uint8_t uart, uint8_t *val);
 esp_err_t ch9434_uart_read_dlm(uint8_t uart, uint8_t *val);
 
 /* 指定 UART 的 FIFO 计数（只读）。CH9434 将计数拆分为
- * 两个连续的 8 位寄存器（低 / 高）。 */
+ * 两个连续的 8 位寄存器（低 / 高）。
+ * 注意：RX FIFO 返回已用字节数（可读数据量），
+ * TX FIFO 返回空闲字节数（可写空间量）。 */
 esp_err_t ch9434_uart_get_rx_fifo_len(uint8_t uart, uint8_t *len_lo, uint8_t *len_hi);
 esp_err_t ch9434_uart_get_tx_fifo_len(uint8_t uart, uint8_t *len_lo, uint8_t *len_hi);
 

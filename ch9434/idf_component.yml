@@ -10,7 +10,7 @@
 ##       git: https://github.com/nczy520/esp-idf-ch9434.git
 ##       version: main
 
-version: "1.0.3"
+version: "1.0.4"
 
 targets:
   - esp32

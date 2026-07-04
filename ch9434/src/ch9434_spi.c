@@ -21,6 +21,7 @@
 #include <string.h>
 #include "esp_log.h"
 #include "driver/spi_master.h"
+#include "driver/gpio.h"
 #include "rom/ets_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -115,6 +116,16 @@ esp_err_t ch9434_spi_bus_init(void)
         return ESP_OK;
     }
 
+    gpio_config_t cs_gpio_cfg = {
+        .pin_bit_mask = (1ULL << PIN_NUM_CS),
+        .mode         = GPIO_MODE_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&cs_gpio_cfg);
+    gpio_set_level(PIN_NUM_CS, 1);
+
     spi_bus_config_t bus_cfg = {
         .mosi_io_num     = PIN_NUM_MOSI,
         .miso_io_num     = PIN_NUM_MISO,
@@ -127,7 +138,7 @@ esp_err_t ch9434_spi_bus_init(void)
     spi_device_interface_config_t dev_cfg = {
         .clock_speed_hz = CH9434_SPI_CLOCK_HZ,
         .mode           = 0,                   /* SPI 模式 0 (CPOL=0, CPHA=0) 参考 WCH EVT */
-        .spics_io_num   = PIN_NUM_CS,
+        .spics_io_num   = -1,                  /* 手动控制 CS，以便在地址和数据之间插入延时 */
         .queue_size     = 4,
         .flags          = 0,
     };
@@ -212,25 +223,48 @@ void ch9434_spi_bus_deinit(void)
 static esp_err_t ch9434_spi_xfer2(uint8_t op, uint8_t reg, uint8_t data_byte,
                                   uint8_t *rx_byte, uint8_t post_delay_us)
 {
-    uint8_t tx[2] = { (uint8_t)(op | reg), data_byte };
-    uint8_t rx[2] = { 0, 0 };
+    uint8_t addr = (uint8_t)(op | reg);
+    uint8_t rx = 0;
 
-    spi_transaction_t t = {
-        .length    = 16,            /* 2 字节 = 16 位，CS 保持低电平 */
-        .tx_buffer = tx,
-        .rx_buffer = rx,
+    gpio_set_level(PIN_NUM_CS, 0);
+
+    spi_transaction_t t_addr = {
+        .length = 8,
+        .flags  = SPI_TRANS_USE_TXDATA,
     };
+    t_addr.tx_data[0] = addr;
 
-    esp_err_t ret = spi_device_transmit(s_dev, &t);
+    esp_err_t ret = spi_device_transmit(s_dev, &t_addr);
     if (ret != ESP_OK) {
+        gpio_set_level(PIN_NUM_CS, 1);
+        return ret;
+    }
+
+    uint8_t inter_delay = (op == CH9434_REG_OP_WRITE)
+                          ? CH9434A_DELAY_ADDR_TO_DATA_US
+                          : CH9434A_DELAY_READ_ADDR_US;
+    ets_delay_us(inter_delay);
+
+    spi_transaction_t t_data = {
+        .length = 8,
+        .flags  = SPI_TRANS_USE_TXDATA | SPI_TRANS_USE_RXDATA,
+    };
+    t_data.tx_data[0] = data_byte;
+
+    ret = spi_device_transmit(s_dev, &t_data);
+    if (ret != ESP_OK) {
+        gpio_set_level(PIN_NUM_CS, 1);
         return ret;
     }
     if (rx_byte) {
-        *rx_byte = rx[1];
+        *rx_byte = t_data.rx_data[0];
     }
+
     if (post_delay_us) {
         ets_delay_us(post_delay_us);
     }
+
+    gpio_set_level(PIN_NUM_CS, 1);
     return ESP_OK;
 }
 
@@ -318,16 +352,6 @@ static void spi_service_task(void *arg)
                                           CH9434A_DELAY_READ_DONE_US);
             if (req.result == ESP_OK && req.fifo_len) {
                 *req.fifo_len = (uint16_t)((hi << 8) | lo);
-                /* TX 方向诊断：限制前 5 次日志，避免重试时刷屏。
-                 * 用于排查 TX FIFO 长度查询返回异常值的问题。 */
-                if (req.is_tx) {
-                    static int s_tx_diag_count = 0;
-                    if (s_tx_diag_count < 5) {
-                        s_tx_diag_count++;
-                        ESP_LOGW(TAG, "TX FIFO uart=%u lo=0x%02X hi=0x%02X -> used=%u",
-                                 (unsigned)req.uart, lo, hi, (unsigned)*req.fifo_len);
-                    }
-                }
             }
             break;
         }

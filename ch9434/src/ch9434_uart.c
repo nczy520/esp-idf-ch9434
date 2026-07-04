@@ -236,15 +236,17 @@ esp_err_t ch9434_uart_write(uint8_t uart, const uint8_t *data, uint16_t len)
     while (offset < len) {
         uint16_t remaining = len - offset;
 
-        /* 查询 TX FIFO 剩余空间。 */
-        uint16_t tx_used = 0;
-        esp_err_t ret = ch9434_spi_get_fifo_len(uart, true, &tx_used);
+        /* 查询 TX FIFO 剩余空闲空间。
+         * 注意：CH9434 的 TX FIFO 长度寄存器返回的是空闲字节数，
+         * 而不是已用字节数（与 RX FIFO 方向相反）。 */
+        uint16_t tx_free = 0;
+        esp_err_t ret = ch9434_spi_get_fifo_len(uart, true, &tx_free);
         if (ret != ESP_OK) {
             return ret;
         }
-
-        uint16_t tx_free = (tx_used < CH9434_TX_FIFO_SIZE)
-                           ? (CH9434_TX_FIFO_SIZE - tx_used) : 0;
+        if (tx_free > CH9434_TX_FIFO_SIZE) {
+            tx_free = CH9434_TX_FIFO_SIZE;
+        }
 
         if (tx_free == 0) {
             /* TX FIFO 满，等待并重试。 */
@@ -304,13 +306,13 @@ esp_err_t ch9434_uart_tx_free(uint8_t uart, uint16_t *count)
     if (uart >= CH9434_UART_COUNT || count == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-    uint16_t tx_used = 0;
-    esp_err_t ret = ch9434_spi_get_fifo_len(uart, true, &tx_used);
+    /* CH9434 TX FIFO 长度寄存器直接返回空闲字节数。 */
+    uint16_t tx_free = 0;
+    esp_err_t ret = ch9434_spi_get_fifo_len(uart, true, &tx_free);
     if (ret != ESP_OK) {
         return ret;
     }
-    *count = (tx_used < CH9434_TX_FIFO_SIZE)
-             ? (CH9434_TX_FIFO_SIZE - tx_used) : 0;
+    *count = (tx_free < CH9434_TX_FIFO_SIZE) ? tx_free : CH9434_TX_FIFO_SIZE;
     return ESP_OK;
 }
 
