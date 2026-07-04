@@ -8,6 +8,7 @@
 ##   dependencies:
 ##     esp_ch9434:
 ##       git: https://github.com/nczy520/esp-idf-ch9434.git
+##       path: esp_ch9434
 ##       version: main
 
 version: "1.0.4"

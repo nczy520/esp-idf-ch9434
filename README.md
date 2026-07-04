@@ -104,11 +104,12 @@ idf_component_register(
 dependencies:
   esp_ch9434:
     git: https://github.com/nczy520/esp-idf-ch9434.git
-    version: main   # 也可指定 tag，如 v1.0.4
+    path: esp_ch9434   # 组件在仓库内的子目录路径
+    version: main       # 也可指定 tag，如 v1.0.4
 ```
 
-执行 `idf.py reconfigure`，组件管理器会自动将组件克隆到
-`managed_components/esp_ch9434/` 目录。
+执行 `idf.py reconfigure`，组件管理器会自动将仓库克隆到
+`managed_components/esp_ch9434/` 目录并定位到 `esp_ch9434/` 子目录中的组件。
 
 ### 方式 C：手动拷贝
 
