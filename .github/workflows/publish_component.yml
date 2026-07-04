@@ -17,5 +17,5 @@ jobs:
         with:
           name: ch9434
           version: ${{ github.ref_name }}
-          path: .
+          path: ch9434
           api_token: ${{ secrets.ESP_COMPONENT_REGISTRY_TOKEN }}

@@ -40,27 +40,32 @@ FreeRTOS 任务可并发调用 API 而不会争用 SPI 外设。
 ## 项目结构
 
 ```
-esp-idf-ch9434/                   ← 根目录即为 ch9434 组件
-├── include/                       ← 头文件（对外 API）
-│   ├── ch9434_uart.h              ← UART 高层 API
-│   ├── ch9434_spi.h               ← SPI 总线抽象层
-│   ├── ch9434_drv.h               ← 寄存器访问层
-│   └── ch9434_regs.h              ← 寄存器映射定义
-├── src/                           ← 实现源码
-│   ├── ch9434_uart.c              ← UART 配置与收发
-│   ├── ch9434_spi.c               ← SPI 时序与串行化
-│   └── ch9434_drv.c               ← 寄存器辅助函数
+esp-idf-ch9434/                   ← 仓库根目录
+├── ch9434/                        ← ch9434 组件目录
+│   ├── include/                   ← 头文件（对外 API）
+│   │   ├── ch9434_uart.h          ← UART 高层 API
+│   │   ├── ch9434_spi.h           ← SPI 总线抽象层
+│   │   ├── ch9434_drv.h           ← 寄存器访问层
+│   │   └── ch9434_regs.h          ← 寄存器映射定义
+│   ├── src/                       ← 实现源码
+│   │   ├── ch9434_uart.c          ← UART 配置与收发
+│   │   ├── ch9434_spi.c           ← SPI 时序与串行化
+│   │   └── ch9434_drv.c           ← 寄存器辅助函数
+│   ├── CMakeLists.txt             ← 组件级 CMake（idf_component_register）
+│   ├── idf_component.yml          ← 组件管理器清单
+│   ├── Kconfig                    ← 配置菜单
+│   └── LICENSE
 ├── examples/
 │   └── sample_project/            ← 端到端测试示例（4 路 UART 并发）
 │       ├── main/
 │       │   ├── main.c
 │       │   ├── test_app.c
 │       │   └── test_app.h
-│       ├── CMakeLists.txt
+│       ├── CMakeLists.txt         ← 项目级 CMake（EXTRA_COMPONENT_DIRS 指向 ../../ch9434）
 │       └── sdkconfig.defaults
-├── CMakeLists.txt                 ← 组件级 CMake（idf_component_register）
-├── idf_component.yml              ← 组件管理器清单
-├── Kconfig                        ← 配置菜单
+├── .github/
+│   └── workflows/
+│       └── publish_component.yml  ← 组件发布 CI
 └── README.md
 ```
 
@@ -71,11 +76,16 @@ esp-idf-ch9434/                   ← 根目录即为 ch9434 组件
 在你的 ESP-IDF 项目根目录执行：
 
 ```bash
-git submodule add https://github.com/nczy520/esp-idf-ch9434.git components/ch9434
+git submodule add https://github.com/nczy520/esp-idf-ch9434.git components/esp-idf-ch9434
 ```
 
-ESP-IDF 会自动发现 `components/` 目录下的组件，无需额外配置。在你的
-`main/CMakeLists.txt` 中声明依赖：
+然后在项目的 `CMakeLists.txt` 中将组件目录加入搜索路径：
+
+```cmake
+set(EXTRA_COMPONENT_DIRS "components/esp-idf-ch9434/ch9434")
+```
+
+在你的 `main/CMakeLists.txt` 中声明依赖：
 
 ```cmake
 idf_component_register(
@@ -101,7 +111,7 @@ dependencies:
 
 ### 方式 C：手动拷贝
 
-将本仓库全部文件拷贝到 `<你的项目>/components/ch9434/`，并在你的组件的
+将本仓库的 `ch9434/` 目录拷贝到 `<你的项目>/components/ch9434/`，并在你的组件的
 `REQUIRES` 列表中添加 `ch9434`。
 
 ## 硬件连接
