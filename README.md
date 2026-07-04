@@ -3,6 +3,7 @@
 [![Component](https://img.shields.io/badge/ESP--IDF-6.0%2B-blue)](https://docs.espressif.com/projects/esp-idf/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 [![Target](https://img.shields.io/badge/target-ESP32--S3-orange)](https://www.espressif.com/en/products/socs/esp32-s3)
+[![Version](https://img.shields.io/badge/version-1.0.2-blueviolet)](idf_component.yml)
 
 WCH（沁恒微电子）**CH9434** 芯片的 ESP-IDF 生产级驱动。该芯片通过一路 SPI 总线扩展出
 **4 路独立 UART 通道**。驱动完全线程安全：由专用的 SPI 服务任务消费请求队列，任意数量的
