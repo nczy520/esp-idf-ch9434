@@ -15,7 +15,7 @@ jobs:
       - name: Upload component to ESP Component Registry
         uses: espressif/upload-components-ci-action@v1
         with:
-          name: ch9434
+          name: esp_ch9434
           version: ${{ github.ref_name }}
-          path: ch9434
+          path: esp_ch9434
           api_token: ${{ secrets.ESP_COMPONENT_REGISTRY_TOKEN }}

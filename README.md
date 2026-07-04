@@ -13,6 +13,7 @@ FreeRTOS 任务可并发调用 API 而不会争用 SPI 外设。
 - 支持目标：ESP32 / ESP32-S2 / ESP32-S3 / ESP32-C2 / C3 / C5 / C6 / ESP32-H2 / ESP32-P4
 - 主测平台：**ESP32-S3**（使用 SPI2 或 SPI3 主机）
 - SPI 时钟：最高 16 MHz（数据手册标称值，默认 2 MHz 稳定值）
+- SPI 时序：手动 CS 控制 + 地址/数据两阶段发送，确保满足 CH9434A 时序要求
 - UART 波特率：1200 - 921600 bps
 - 每路 UART FIFO：RX 256 字节 / TX 1536 字节（CH9434A）
 - 并发模型：队列 + 服务任务（无互斥锁，无锁竞争）
@@ -41,7 +42,7 @@ FreeRTOS 任务可并发调用 API 而不会争用 SPI 外设。
 
 ```
 esp-idf-ch9434/                   ← 仓库根目录
-├── ch9434/                        ← ch9434 组件目录
+├── esp_ch9434/                    ← esp_ch9434 组件目录
 │   ├── include/                   ← 头文件（对外 API）
 │   │   ├── ch9434_uart.h          ← UART 高层 API
 │   │   ├── ch9434_spi.h           ← SPI 总线抽象层
@@ -61,7 +62,7 @@ esp-idf-ch9434/                   ← 仓库根目录
 │       │   ├── main.c
 │       │   ├── test_app.c
 │       │   └── test_app.h
-│       ├── CMakeLists.txt         ← 项目级 CMake（EXTRA_COMPONENT_DIRS 指向 ../../ch9434）
+│       ├── CMakeLists.txt         ← 项目级 CMake（EXTRA_COMPONENT_DIRS 指向 ../..）
 │       └── sdkconfig.defaults
 ├── .github/
 │   └── workflows/
@@ -82,7 +83,7 @@ git submodule add https://github.com/nczy520/esp-idf-ch9434.git components/esp-i
 然后在项目的 `CMakeLists.txt` 中将组件目录加入搜索路径：
 
 ```cmake
-set(EXTRA_COMPONENT_DIRS "components/esp-idf-ch9434/ch9434")
+set(EXTRA_COMPONENT_DIRS "components/esp-idf-ch9434/esp_ch9434")
 ```
 
 在你的 `main/CMakeLists.txt` 中声明依赖：
@@ -91,7 +92,7 @@ set(EXTRA_COMPONENT_DIRS "components/esp-idf-ch9434/ch9434")
 idf_component_register(
     SRCS "main.c"
     INCLUDE_DIRS "."
-    REQUIRES ch9434
+    REQUIRES esp_ch9434
 )
 ```
 
@@ -101,18 +102,18 @@ idf_component_register(
 
 ```yaml
 dependencies:
-  ch9434:
+  esp_ch9434:
     git: https://github.com/nczy520/esp-idf-ch9434.git
-    version: main   # 也可指定 tag，如 v1.0.1
+    version: main   # 也可指定 tag，如 v1.0.4
 ```
 
 执行 `idf.py reconfigure`，组件管理器会自动将组件克隆到
-`managed_components/ch9434/` 目录。
+`managed_components/esp_ch9434/` 目录。
 
 ### 方式 C：手动拷贝
 
-将本仓库的 `ch9434/` 目录拷贝到 `<你的项目>/components/ch9434/`，并在你的组件的
-`REQUIRES` 列表中添加 `ch9434`。
+将本仓库的 `esp_ch9434/` 目录拷贝到 `<你的项目>/components/esp_ch9434/`，并在你的组件的
+`REQUIRES` 列表中添加 `esp_ch9434`。
 
 ## 硬件连接
 
@@ -261,6 +262,8 @@ typedef struct {
 | `ch9434_spi_read_reg(reg, val)` | 读取单个寄存器字节 |
 | `ch9434_spi_write_bytes(reg, data, len)` | 批量 FIFO 写入 |
 | `ch9434_spi_read_bytes(reg, data, len)` | 批量 FIFO 读取 |
+| `ch9434_spi_get_fifo_len(uart, is_tx, len)` | 合并请求查询 FIFO 长度（RX=已用, TX=空闲） |
+| `ch9434_spi_read_fifo(uart, data, max, out)` | 合并请求查长度 + 读数据（仅 RX） |
 
 ### 寄存器层（ch9434_drv.h）
 
@@ -278,8 +281,8 @@ typedef struct {
 | `ch9434_uart_read_lsr(uart, val)` | LSR 线路状态寄存器（只读） |
 | `ch9434_uart_read_iir(uart, val)` | IIR 中断标识寄存器（只读） |
 | `ch9434_uart_write_dll/dlm(uart, val)` | DLL/DLM 除数锁存寄存器 |
-| `ch9434_uart_get_rx_fifo_len(uart, lo, hi)` | RX FIFO 数据计数 |
-| `ch9434_uart_get_tx_fifo_len(uart, lo, hi)` | TX FIFO 数据计数 |
+| `ch9434_uart_get_rx_fifo_len(uart, lo, hi)` | RX FIFO 已用字节数 |
+| `ch9434_uart_get_tx_fifo_len(uart, lo, hi)` | TX FIFO 空闲字节数 |
 | `ch9434_uart_write_fifo(uart, data, len)` | 写入 TX FIFO |
 | `ch9434_uart_read_fifo(uart, data, len)` | 读取 RX FIFO |
 | `ch9434_write_clk_ctrl(val)` | 全局时钟控制寄存器 |
@@ -308,18 +311,39 @@ typedef struct {
 即不可能发生。批量 FIFO 传输作为单个队列条目提交，因此执行过程不会与
 其他 UART 的数据流交错。
 
+### SPI 时序实现
+
+CH9434A 要求数据手册指定的精确时序：
+
+| 操作 | 时序 |
+|------|------|
+| 写寄存器 | CS 低 → [地址] → **1us** → [数据] → **3us** → CS 高 |
+| 读寄存器 | CS 低 → [地址] → **3us** → [0xFF→数据] → **1us** → CS 高 |
+
+CS 信号由 GPIO 手动控制（不使用 SPI 硬件 CS），地址和数据分两次
+`spi_device_transmit` 调用发送，中间插入 `ets_delay_us()` 延时。
+这样可以在任意 SPI 时钟频率下保证芯片时序要求，使时钟可达 16 MHz 上限。
+
+> **注**：原方案将地址+数据作为单次 16 位事务连续发送，仅能在 200kHz
+> 下侥幸工作（单字节 40us 自然满足时序）。频率升高后字节间隔不足 3us，
+> 导致读操作返回错误数据。当前方案已修复此问题。
+
 ### 请求类型
 
 队列支持 6 种请求类型：
 
 | 类型 | 说明 | 队列切换次数 | SPI 传输次数 |
 |------|------|:------------:|:------------:|
-| `WRITE_REG` | 写入单个寄存器 | 1 | 1 |
-| `READ_REG` | 读取单个寄存器 | 1 | 1 |
-| `WRITE_BYTES` | FIFO 批量写入（多字节） | 1 | N（每字节 1 次） |
-| `READ_BYTES` | FIFO 批量读取（指定长度） | 1 | N（每字节 1 次） |
-| `GET_FIFO_LEN` | 查询 RX/TX FIFO 长度（合并 3 步） | 1 | 3 |
-| `READ_FIFO` | 查长度 + 读数据（合并 4 步） | 1 | 3 + N |
+| `WRITE_REG` | 写入单个寄存器 | 1 | 2（地址+数据） |
+| `READ_REG` | 读取单个寄存器 | 1 | 2（地址+数据） |
+| `WRITE_BYTES` | FIFO 批量写入（多字节） | 1 | 2N（每字节 2 次） |
+| `READ_BYTES` | FIFO 批量读取（指定长度） | 1 | 2N（每字节 2 次） |
+| `GET_FIFO_LEN` | 查询 RX/TX FIFO 长度（合并 3 步） | 1 | 6 |
+| `READ_FIFO` | 查长度 + 读数据（合并 4 步） | 1 | 6 + 2N |
+
+> **注**：每次寄存器访问需 2 次 SPI 传输（地址字节 + 数据字节），
+> 中间插入 1us/3us 延时满足 CH9434A 时序要求。这是手动 CS 控制 +
+> 两阶段发送方案的必要代价，换取的是 SPI 时钟可提升至 16 MHz。
 
 **优化亮点**：`GET_FIFO_LEN` 和 `READ_FIFO` 是合并请求，将原本需要多次队列切换
 的操作压缩为单次，在多任务大数据量场景下显著减少上下文切换开销。
@@ -330,9 +354,15 @@ typedef struct {
 ### TX 流控
 
 `ch9434_uart_write()` 内置 TX FIFO 流控：
-- 每次写入前查询 TX FIFO 剩余空间
+- 每次写入前查询 TX FIFO 剩余空闲空间
 - FIFO 满时自动等待并重试（可配置等待间隔和最大重试次数）
 - 超时返回 `ESP_ERR_TIMEOUT`，避免数据丢失或死等
+
+> **重要**：CH9434 的 FIFO 长度寄存器对两个方向返回的语义不同：
+> - **RX FIFO** 返回**已用字节数**（可读数据量）
+> - **TX FIFO** 返回**空闲字节数**（可写空间量）
+>
+> 驱动内部已正确处理这一差异，应用层无需关心。
 
 ## 技术参数
 

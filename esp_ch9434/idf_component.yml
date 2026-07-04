@@ -6,12 +6,14 @@
 ## 消费者端 idf_component.yml 示例：
 ##
 ##   dependencies:
-##     ch9434:
+##     esp_ch9434:
 ##       git: https://github.com/nczy520/esp-idf-ch9434.git
 ##       version: main
 
 version: "1.0.4"
 
+## 显式声明组件名（默认从目录名继承，此处保持一致以确保
+## 被 ESP Component Registry 注册为 esp_ch9434 而非 ch9434）。
 targets:
   - esp32
   - esp32s2
