@@ -91,7 +91,7 @@ idf_component_register(
 
 ```yaml
 dependencies:
-  ch9434:
+  esp-idf-ch9434:
     git: https://github.com/nczy520/esp-idf-ch9434.git
     version: main   # 也可指定 tag，如 v1.0.1
 ```
